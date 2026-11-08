@@ -22,6 +22,9 @@ namespace MagicPlus.AnimationLab
         public static void DrawControls(MagicPoseLab lab)
         {
             if (!lab) return;
+            var reference=AssetDatabase.LoadAssetAtPath<TextAsset>("Assets/Magic_plus/AnimationLab/Poses/FireArrow_TwoFingerHold.json");
+            using(new EditorGUI.DisabledScope(!reference))if(GUILayout.Button("Поза по референсам: два пальца"))
+            {RecordPoseUndo(lab,"Load two-finger fire arrow pose");lab.LoadPoseJson(reference.text);EditorSceneManager.MarkSceneDirty(lab.gameObject.scene);}
             var native=AssetDatabase.LoadAssetAtPath<TextAsset>("Assets/Magic_plus/AnimationLab/LocalReference/NativeBowHold.json");
             using(new EditorGUI.DisabledScope(!native)) if(GUILayout.Button("Поза лука из игры"))
             {RecordPoseUndo(lab,"Load original bow pose");lab.LoadPoseJson(native.text);EditorSceneManager.MarkSceneDirty(lab.gameObject.scene);}
@@ -53,7 +56,7 @@ namespace MagicPlus.AnimationLab
                 }
             }
         }
-        private static void RecordPoseUndo(MagicPoseLab lab,string label)
+        internal static void RecordPoseUndo(MagicPoseLab lab,string label)
         {Undo.RecordObject(lab,label);Undo.RecordObjects(lab.Controls,label);Undo.RecordObjects(lab.poseBones,label);}
         private static void Frame(MagicPoseLab lab, bool close)
         {
@@ -68,6 +71,7 @@ namespace MagicPlus.AnimationLab
     public sealed class MagicPoseLabWindow : EditorWindow
     {
         private Vector2 _scroll;
+        private int _tab;
         [MenuItem("MagicPlus/Pose Lab")]
         public static void Open()
         {
@@ -90,7 +94,9 @@ namespace MagicPlus.AnimationLab
             if(EditorGUI.EndChangeCheck())
             {Undo.RecordObject(lab,"Change magic pose preview");lab.previewEnabled=preview;lab.drawAmount=draw;lab.followAim=follow;lab.showSkeleton=bones;if(preview)lab.ApplyPose();EditorSceneManager.MarkSceneDirty(lab.gameObject.scene);}
             if(!lab.previewEnabled)EditorGUILayout.HelpBox("Ручной режим. Вращайте кости, затем нажмите «Запомнить правки верха тела». Ноги останутся из исходной стойки.",MessageType.Info);
-            EditorGUILayout.Space();MagicPoseLabEditor.DrawControls(lab);
+            EditorGUILayout.Space();_tab=GUILayout.Toolbar(_tab,new[]{"Поза и руки","Пальцы"});
+            EditorGUILayout.Space();
+            if(_tab==0)MagicPoseLabEditor.DrawControls(lab);else MagicFingerControls.Draw(lab);
             EditorGUILayout.EndScrollView();
         }
         private void OnInspectorUpdate(){Repaint();}

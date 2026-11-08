@@ -157,6 +157,67 @@ namespace MagicPlus.AnimationLab
             var spine = Bone(HumanBodyBones.Spine);
             return spine && (bone == spine || bone.IsChildOf(spine));
         }
+        [Serializable] public struct FingerPose
+        {
+            public float first, second, third, spread;
+            public FingerPose(float first, float second, float third, float spread=0f)
+            {this.first=first;this.second=second;this.third=third;this.spread=spread;}
+        }
+        private static readonly string[] FingerNames={"Thumb","Index","Middle","Ring","Little"};
+        private static readonly string[] JointNames={"Proximal","Intermediate","Distal"};
+        public Transform FingerBone(bool left,int finger,int joint)
+        {
+            return Bone((HumanBodyBones)Enum.Parse(typeof(HumanBodyBones),(left ? "Left" : "Right")+FingerNames[finger]+JointNames[joint]));
+        }
+        private static int MuscleIndex(bool left,int finger,string property)
+        {
+            string name=(left ? "Left " : "Right ")+FingerNames[finger]+" "+property;
+            int index=Array.IndexOf(HumanTrait.MuscleName,name);
+            if(index<0)throw new InvalidOperationException("Нет параметра пальца: "+name);
+            return index;
+        }
+        public FingerPose ReadFinger(bool left,int finger)
+        {
+            var pose=new HumanPose();
+            using(var handler=new HumanPoseHandler(character.avatar,character.transform))handler.GetHumanPose(ref pose);
+            return new FingerPose((1f-pose.muscles[MuscleIndex(left,finger,"1 Stretched")])*0.5f,
+                (1f-pose.muscles[MuscleIndex(left,finger,"2 Stretched")])*0.5f,
+                (1f-pose.muscles[MuscleIndex(left,finger,"3 Stretched")])*0.5f,
+                pose.muscles[MuscleIndex(left,finger,"Spread")]);
+        }
+        public void SetFinger(bool left,int finger,FingerPose value)
+        {
+            var positions=new Vector3[poseBones.Length];var rotations=new Quaternion[poseBones.Length];
+            for(int i=0;i<poseBones.Length;i++){positions[i]=poseBones[i].localPosition;rotations[i]=poseBones[i].localRotation;}
+            var joints=new[]{FingerBone(left,finger,0),FingerBone(left,finger,1),FingerBone(left,finger,2)};
+            var calculated=new Quaternion[3];
+            try
+            {
+                var pose=new HumanPose();
+                using(var handler=new HumanPoseHandler(character.avatar,character.transform))
+                {
+                    handler.GetHumanPose(ref pose);
+                    pose.muscles[MuscleIndex(left,finger,"1 Stretched")]=1f-2f*value.first;
+                    pose.muscles[MuscleIndex(left,finger,"2 Stretched")]=1f-2f*value.second;
+                    pose.muscles[MuscleIndex(left,finger,"3 Stretched")]=1f-2f*value.third;
+                    pose.muscles[MuscleIndex(left,finger,"Spread")]=value.spread;
+                    handler.SetHumanPose(ref pose);
+                    for(int i=0;i<joints.Length;i++)calculated[i]=joints[i].localRotation;
+                }
+            }
+            finally
+            {
+                // Humanoid solving can touch the full skeleton. Retain only the chosen finger.
+                for(int i=0;i<poseBones.Length;i++){poseBones[i].localPosition=positions[i];poseBones[i].localRotation=rotations[i];}
+            }
+            for(int i=0;i<joints.Length;i++)
+            {
+                joints[i].localRotation=calculated[i];
+                int index=Array.IndexOf(poseBones,joints[i]);if(index>=0)restRotations[index]=calculated[i];
+            }
+            if(previewEnabled)ApplyPose();
+            RememberCurrentInput();
+        }
         public void RebaseControls()
         {
             leftHandTarget.SetPositionAndRotation(Bone(HumanBodyBones.LeftHand).position, Bone(HumanBodyBones.LeftHand).rotation);
@@ -244,8 +305,9 @@ namespace MagicPlus.AnimationLab
             {
                 aimFrame.SetPositionAndRotation(transform.TransformPoint(shoulderPivot),transform.rotation);
                 aimTarget.position=aimFrame.position+transform.forward*2.5f;
-                RebaseControls();CaptureDefaults();
+                RebaseControls();
             }
+            CaptureDefaults();
             previewEnabled=true;ApplyPose();RememberCurrentInput();
         }
 
