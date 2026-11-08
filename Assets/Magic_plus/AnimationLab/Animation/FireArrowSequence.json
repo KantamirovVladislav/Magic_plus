@@ -1,0 +1,9 @@
+{
+  "version": 1,
+  "enterSeconds": 0.2,
+  "drawSeconds": 0.6,
+  "holdSeconds": 1.0,
+  "releaseSeconds": 0.14,
+  "recoverSeconds": 0.3,
+  "releaseMarker": 0.35
+}

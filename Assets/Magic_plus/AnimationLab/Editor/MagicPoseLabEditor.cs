@@ -11,6 +11,8 @@ namespace MagicPlus.AnimationLab
         public override void OnInspectorGUI()
         {
             var lab = (MagicPoseLab)target;
+            if(MagicArrowAnimationWindow.Owns(lab))
+            {EditorGUILayout.HelpBox("Идёт предпросмотр движения. Остановите его в MagicPlus → Fire Arrow Animation перед правкой позы.",MessageType.Info);return;}
             EditorGUILayout.HelpBox("Работает без Play. Выберите кисть или локоть кнопкой, затем W — движение, E — поворот. Ctrl+S сохраняет сцену. Прицел проверяет наведение вверх/вниз.", MessageType.Info);
             DrawControls(lab);
             EditorGUILayout.Space();
@@ -92,6 +94,11 @@ namespace MagicPlus.AnimationLab
         {
             var lab=Object.FindFirstObjectByType<MagicPoseLab>();
             if(!lab){EditorGUILayout.HelpBox("Откройте сцену MagicPlus_AnimationLab.",MessageType.Info);return;}
+            if(MagicArrowAnimationWindow.Owns(lab))
+            {
+                EditorGUILayout.HelpBox("Поза управляется предпросмотром анимации. После остановки вернётся исходное положение.",MessageType.Info);
+                if(GUILayout.Button("Открыть окно анимации"))MagicArrowAnimationWindow.Open();return;
+            }
             _scroll=EditorGUILayout.BeginScrollView(_scroll);
             GUILayout.Label("Огненная стрела — настройка рук",EditorStyles.boldLabel);
             EditorGUILayout.HelpBox("Выберите точку и двигайте её в Scene. W — перемещение, E — поворот. Play не требуется.",MessageType.Info);
