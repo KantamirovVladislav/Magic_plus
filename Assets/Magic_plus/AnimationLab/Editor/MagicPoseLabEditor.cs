@@ -94,9 +94,11 @@ namespace MagicPlus.AnimationLab
             if(EditorGUI.EndChangeCheck())
             {Undo.RecordObject(lab,"Change magic pose preview");lab.previewEnabled=preview;lab.drawAmount=draw;lab.followAim=follow;lab.showSkeleton=bones;if(preview)lab.ApplyPose();EditorSceneManager.MarkSceneDirty(lab.gameObject.scene);}
             if(!lab.previewEnabled)EditorGUILayout.HelpBox("Ручной режим. Вращайте кости, затем нажмите «Запомнить правки верха тела». Ноги останутся из исходной стойки.",MessageType.Info);
-            EditorGUILayout.Space();_tab=GUILayout.Toolbar(_tab,new[]{"Поза и руки","Пальцы"});
+            EditorGUILayout.Space();_tab=GUILayout.Toolbar(_tab,new[]{"Поза и руки","Пальцы","Взгляд"});
             EditorGUILayout.Space();
-            if(_tab==0)MagicPoseLabEditor.DrawControls(lab);else MagicFingerControls.Draw(lab);
+            if(_tab==0)MagicPoseLabEditor.DrawControls(lab);
+            else if(_tab==1)MagicFingerControls.Draw(lab);
+            else MagicAimControls.Draw(lab);
             EditorGUILayout.EndScrollView();
         }
         private void OnInspectorUpdate(){Repaint();}

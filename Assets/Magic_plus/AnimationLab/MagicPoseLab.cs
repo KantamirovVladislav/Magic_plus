@@ -62,6 +62,70 @@ namespace MagicPlus.AnimationLab
             return hash;
         }
         public void RememberCurrentInput() { _lastHash = InputHash(); }
+        public Vector3 AimDirection => (aimTarget.position-transform.TransformPoint(shoulderPivot)).normalized;
+        public Vector3 LeftFingerDirection
+        {
+            get
+            {
+                Vector3 index=(FingerBone(true,1,2).position-FingerBone(true,1,0).position).normalized;
+                Vector3 middle=(FingerBone(true,2,2).position-FingerBone(true,2,0).position).normalized;
+                return (index+middle).normalized;
+            }
+        }
+        private Quaternion AimOffset()
+        {
+            Vector3 direction=AimDirection;
+            if(direction.sqrMagnitude<0.0001f)direction=transform.forward;
+            Vector3 local=transform.InverseTransformDirection(direction);
+            float yaw=Mathf.Clamp(Mathf.Atan2(local.x,local.z)*Mathf.Rad2Deg,-yawLimit,yawLimit);
+            float pitch=Mathf.Clamp(Mathf.Asin(Mathf.Clamp(local.y,-1f,1f))*Mathf.Rad2Deg,-pitchLimit,pitchLimit);
+            return followAim ? Quaternion.Euler(-pitch,yaw,0f) : Quaternion.identity;
+        }
+        // The FBX head's local +Z is sideways. Derive face/up axes from the Avatar bind skeleton.
+        private Quaternion HeadLocalFrame()
+        {
+            var skeleton=character.avatar.humanDescription.skeleton;
+            Quaternion bind=Quaternion.identity;
+            for(var current=Bone(HumanBodyBones.Head);current && current!=character.transform;current=current.parent)
+            {
+                int index=Array.FindIndex(skeleton,b=>b.name==current.name);
+                if(index<0)throw new InvalidOperationException("Нет исходной ориентации кости: "+current.name);
+                bind=skeleton[index].rotation*bind;
+            }
+            return Quaternion.LookRotation(Quaternion.Inverse(bind)*Vector3.forward,Quaternion.Inverse(bind)*Vector3.up);
+        }
+        public Vector3 HeadDirection => Bone(HumanBodyBones.Head).rotation*HeadLocalFrame()*Vector3.forward;
+        public void MatchAimToLeftFingers()
+        {
+            Vector3 direction=LeftFingerDirection;
+            if(direction.sqrMagnitude<0.0001f)throw new InvalidOperationException("Не удалось определить направление пальцев.");
+            Vector3 pivot=transform.TransformPoint(shoulderPivot);
+            float distance=Mathf.Max(1f,Vector3.Distance(pivot,aimTarget.position));
+            aimTarget.position=pivot+direction*distance;
+            // Rebase controls after rotating the frame, keeping the visible body and hands in place.
+            aimFrame.SetPositionAndRotation(pivot,transform.rotation*AimOffset());
+            CaptureUpperBodyEdits();CaptureDefaults();RememberCurrentInput();
+        }
+        public void SetUpperBoneRotation(HumanBodyBones id,Quaternion localRotation)
+        {
+            var bone=Bone(id);
+            if(!bone || !IsUpperBody(bone))throw new ArgumentException("Выберите кость верха тела.");
+            bone.localRotation=localRotation;
+            int index=Array.IndexOf(poseBones,bone);if(index>=0)restRotations[index]=localRotation;
+            if(previewEnabled)ApplyPose();RememberCurrentInput();
+        }
+        public void AlignHeadToAim()
+        {
+            var head=Bone(HumanBodyBones.Head);var neck=Bone(HumanBodyBones.Neck);
+            Vector3 direction=AimDirection;if(direction.sqrMagnitude<0.0001f)return;
+            Quaternion desired=Quaternion.LookRotation(direction,transform.up)*Quaternion.Inverse(HeadLocalFrame());
+            Quaternion delta=desired*Quaternion.Inverse(head.rotation);
+            if(neck)neck.rotation=Quaternion.Slerp(Quaternion.identity,delta,0.35f)*neck.rotation;
+            head.rotation=desired;
+            foreach(var bone in new[]{neck,head})if(bone)
+            {int index=Array.IndexOf(poseBones,bone);if(index>=0)restRotations[index]=bone.localRotation;}
+            if(previewEnabled)ApplyPose();RememberCurrentInput();
+        }
 #if UNITY_EDITOR
         private void EditorTick()
         {
@@ -90,12 +154,7 @@ namespace MagicPlus.AnimationLab
                 character.transform.localRotation = rotation;
                 character.transform.localScale = scale;
                 aimFrame.position = transform.TransformPoint(shoulderPivot);
-                Vector3 direction = aimTarget.position - aimFrame.position;
-                if (direction.sqrMagnitude < 0.0001f) direction = transform.forward;
-                Vector3 local = transform.InverseTransformDirection(direction.normalized);
-                float yaw = Mathf.Clamp(Mathf.Atan2(local.x, local.z) * Mathf.Rad2Deg, -yawLimit, yawLimit);
-                float pitch = Mathf.Clamp(Mathf.Asin(Mathf.Clamp(local.y, -1f, 1f)) * Mathf.Rad2Deg, -pitchLimit, pitchLimit);
-                Quaternion offset = followAim ? Quaternion.Euler(-pitch, yaw, 0f) : Quaternion.identity;
+                Quaternion offset = AimOffset();
                 aimFrame.rotation = transform.rotation * offset;
                 var chest = Bone(HumanBodyBones.Chest);
                 if (chest) chest.rotation = transform.rotation * Quaternion.Slerp(Quaternion.identity, offset, bodyAimWeight)
@@ -322,6 +381,15 @@ namespace MagicPlus.AnimationLab
                         Gizmos.DrawLine(bone.position, bone.parent.position);
             }
             if (!showGuides) return;
+            var hand=Bone(HumanBodyBones.LeftHand);var head=Bone(HumanBodyBones.Head);
+            Gizmos.color=new Color(1f,0.3f,0.3f);Gizmos.DrawLine(transform.TransformPoint(shoulderPivot),aimTarget.position);
+            Vector3 fingerEnd=hand.position+LeftFingerDirection*0.5f;
+            Vector3 headEnd=head.position+HeadDirection*0.5f;
+            Gizmos.color=Color.cyan;Gizmos.DrawLine(hand.position,fingerEnd);
+            Gizmos.color=new Color(.85f,.4f,1f);Gizmos.DrawLine(head.position,headEnd);
+#if UNITY_EDITOR
+            Handles.Label(fingerEnd,"Направление пальцев");Handles.Label(headEnd,"Взгляд");
+#endif
             var colors = new[] {Color.cyan, new Color(1f,0.65f,0.1f), Color.green, Color.green, new Color(1f,0.3f,0.3f)};
             var labels = new[] {"Левая кисть", "Правая кисть", "Левый локоть", "Правый локоть", "Прицел"};
             for (int i=0;i<Controls.Length;i++) if (Controls[i])
