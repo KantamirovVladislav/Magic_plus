@@ -56,6 +56,16 @@ namespace MagicPlus.AnimationLab
                 }
             }
         }
+        internal static void DrawReviewedPoses(MagicPoseLab lab)
+        {
+            EditorGUILayout.LabelField("Проверенные позы",EditorStyles.boldLabel);
+            using(new EditorGUILayout.HorizontalScope())foreach(string phase in new[]{"Start","Loaded","Release"})
+            {
+                var pose=AssetDatabase.LoadAssetAtPath<TextAsset>("Assets/Magic_plus/AnimationLab/Poses/Reviewed/FireArrow_"+phase+"_Reviewed.json");
+                using(new EditorGUI.DisabledScope(!pose))if(GUILayout.Button(phase))
+                {RecordPoseUndo(lab,"Load reviewed "+phase+" pose");lab.LoadPoseJson(pose.text);EditorSceneManager.MarkSceneDirty(lab.gameObject.scene);}
+            }
+        }
         internal static void RecordPoseUndo(MagicPoseLab lab,string label)
         {Undo.RecordObject(lab,label);Undo.RecordObjects(lab.Controls,label);Undo.RecordObjects(lab.poseBones,label);}
         private static void Frame(MagicPoseLab lab, bool close)
@@ -94,6 +104,7 @@ namespace MagicPlus.AnimationLab
             if(EditorGUI.EndChangeCheck())
             {Undo.RecordObject(lab,"Change magic pose preview");lab.previewEnabled=preview;lab.drawAmount=draw;lab.followAim=follow;lab.showSkeleton=bones;if(preview)lab.ApplyPose();EditorSceneManager.MarkSceneDirty(lab.gameObject.scene);}
             if(!lab.previewEnabled)EditorGUILayout.HelpBox("Ручной режим. Вращайте кости, затем нажмите «Запомнить правки верха тела». Ноги останутся из исходной стойки.",MessageType.Info);
+            EditorGUILayout.Space();MagicPoseLabEditor.DrawReviewedPoses(lab);
             EditorGUILayout.Space();_tab=GUILayout.Toolbar(_tab,new[]{"Поза и руки","Пальцы","Взгляд"});
             EditorGUILayout.Space();
             if(_tab==0)MagicPoseLabEditor.DrawControls(lab);
