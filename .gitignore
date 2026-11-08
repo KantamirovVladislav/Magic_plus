@@ -112,3 +112,7 @@ InitTestScene*.unity*
 
 # Auto-generated cache in Assets folder
 /[Aa]ssets/[Ss]ceneDependencyCache*
+/Assets/Magic_plus/AnimationLab/LocalReference/
+/Assets/Magic_plus/AnimationLab/LocalReference.meta
+/Assets/Magic_plus/AnimationLab/Scenes/BeforeAnimationLab*.unity
+/Assets/Magic_plus/AnimationLab/Scenes/BeforeAnimationLab*.unity.meta
