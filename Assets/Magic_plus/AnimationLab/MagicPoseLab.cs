@@ -33,6 +33,7 @@ namespace MagicPlus.AnimationLab
         [NonSerialized] public float leftReachError, rightReachError;
         private bool _applying;
         private int _lastHash;
+        [HideInInspector] public string basisName = "Исходный скелет";
 
         private Transform Bone(HumanBodyBones bone) => character.GetBoneTransform(bone);
         public Transform[] Controls => new[] { leftHandTarget, rightHandTarget, leftElbowHint, rightElbowHint, aimTarget };
@@ -53,17 +54,22 @@ namespace MagicPlus.AnimationLab
         }
         private void OnValidate() { _lastHash = 0; }
         private void Update() { if (Application.isPlaying && previewEnabled) ApplyPose(); }
+        private int InputHash()
+        {
+            int hash = drawAmount.GetHashCode() ^ sampleTime.GetHashCode() * 7 ^ bodyAimWeight.GetHashCode() * 13
+                ^ pitchLimit.GetHashCode() * 17 ^ yawLimit.GetHashCode() * 19 ^ followAim.GetHashCode();
+            foreach (var control in Controls) if (control) hash = hash * 31 + control.localToWorldMatrix.GetHashCode();
+            return hash;
+        }
+        public void RememberCurrentInput() { _lastHash = InputHash(); }
 #if UNITY_EDITOR
         private void EditorTick()
         {
             if (Application.isPlaying || !previewEnabled || !character || !aimFrame || !aimTarget) return;
-            int hash = drawAmount.GetHashCode() ^ sampleTime.GetHashCode() * 7 ^ bodyAimWeight.GetHashCode() * 13
-                ^ pitchLimit.GetHashCode() * 17 ^ yawLimit.GetHashCode() * 19 ^ followAim.GetHashCode();
-            foreach (var control in Controls) if (control) hash = hash * 31 + control.localToWorldMatrix.GetHashCode();
+            int hash = InputHash();
             if (_lastHash == hash) return;
             ApplyPose();
-            // Aim-frame changes also move the controls, so capture the settled hash next tick.
-            _lastHash = hash;
+            RememberCurrentInput();
             SceneView.RepaintAll();
         }
 #endif
@@ -146,6 +152,37 @@ namespace MagicPlus.AnimationLab
             restPositions = new Vector3[poseBones.Length]; restRotations = new Quaternion[poseBones.Length];
             for(int i=0;i<poseBones.Length;i++) {restPositions[i]=poseBones[i].localPosition;restRotations[i]=poseBones[i].localRotation;}
         }
+        public bool IsUpperBody(Transform bone)
+        {
+            var spine = Bone(HumanBodyBones.Spine);
+            return spine && (bone == spine || bone.IsChildOf(spine));
+        }
+        public void RebaseControls()
+        {
+            leftHandTarget.SetPositionAndRotation(Bone(HumanBodyBones.LeftHand).position, Bone(HumanBodyBones.LeftHand).rotation);
+            rightHandTarget.SetPositionAndRotation(Bone(HumanBodyBones.RightHand).position, Bone(HumanBodyBones.RightHand).rotation);
+            leftElbowHint.position = Bone(HumanBodyBones.LeftLowerArm).position;
+            rightElbowHint.position = Bone(HumanBodyBones.RightLowerArm).position;
+            drawAmount = 1f;
+        }
+        public void CaptureUpperBodyEdits()
+        {
+            // Hips and legs retain the original basis; only torso, head, arms and fingers are captured.
+            var chest = Bone(HumanBodyBones.Chest);
+            Quaternion undoAim = Quaternion.identity;
+            if (followAim && chest)
+                undoAim = Quaternion.Inverse(transform.rotation * Quaternion.Slerp(Quaternion.identity, aimFrame.localRotation, bodyAimWeight)
+                    * Quaternion.Inverse(transform.rotation));
+            for (int i = 0; i < poseBones.Length; i++) if (poseBones[i] && IsUpperBody(poseBones[i]))
+            {
+                restRotations[i] = poseBones[i] == chest
+                    ? Quaternion.Inverse(chest.parent.rotation) * undoAim * chest.rotation : poseBones[i].localRotation;
+            }
+            RebaseControls();
+            basisName = "Своя поза верха тела";
+            if (previewEnabled) ApplyPose();
+            RememberCurrentInput();
+        }
         public void ResetControls()
         {
             if (defaultPositions == null || defaultPositions.Length != Controls.Length) return;
@@ -156,20 +193,60 @@ namespace MagicPlus.AnimationLab
 
         [Serializable] public sealed class PoseSettings
         {
-            public int version = 1;
+            public int version = 2;
             public string baseClip;
             public float sampleTime, drawAmount, bodyAimWeight, pitchLimit, yawLimit;
             public Vector3 shoulderPivot;
             public Vector3[] controlPositions;
             public Quaternion[] controlRotations;
+            public string[] bonePaths;
+            public Vector3[] bonePositions;
+            public Quaternion[] boneRotations;
         }
         public string ExportJson()
         {
-            var data = new PoseSettings { baseClip=basePose ? basePose.name : "", sampleTime=sampleTime, drawAmount=drawAmount,
+            var data = new PoseSettings { baseClip=basisName, sampleTime=sampleTime, drawAmount=drawAmount,
                 bodyAimWeight=bodyAimWeight, pitchLimit=pitchLimit, yawLimit=yawLimit, shoulderPivot=shoulderPivot,
-                controlPositions=new Vector3[Controls.Length], controlRotations=new Quaternion[Controls.Length] };
+                controlPositions=new Vector3[Controls.Length], controlRotations=new Quaternion[Controls.Length],
+                bonePaths=new string[poseBones.Length], bonePositions=(Vector3[])restPositions.Clone(), boneRotations=(Quaternion[])restRotations.Clone() };
             for (int i=0;i<Controls.Length;i++) {data.controlPositions[i]=Controls[i].localPosition;data.controlRotations[i]=Controls[i].localRotation;}
+            for (int i=0;i<poseBones.Length;i++) data.bonePaths[i]=BonePath(poseBones[i]);
             return JsonUtility.ToJson(data, true);
+        }
+        private string BonePath(Transform bone)
+        {
+            string path="";
+            for(var current=bone;current && current!=character.transform;current=current.parent)
+                path=current.name+(path.Length>0 ? "/"+path : "");
+            return path;
+        }
+        public void LoadPoseJson(string json)
+        {
+            var data=JsonUtility.FromJson<PoseSettings>(json);
+            if(data==null || (data.version!=1 && data.version!=2))throw new ArgumentException("Неизвестный формат позы.");
+            if(data.bonePaths!=null && (data.bonePositions==null || data.boneRotations==null
+                || data.bonePositions.Length!=data.bonePaths.Length || data.boneRotations.Length!=data.bonePaths.Length))
+                throw new ArgumentException("Повреждённый набор костей.");
+            if(data.bonePaths!=null)for(int i=0;i<data.bonePaths.Length;i++)
+            {
+                var bone=data.bonePaths[i].Length==0 ? character.transform : character.transform.Find(data.bonePaths[i]);
+                if(!bone)throw new ArgumentException("Нет кости: "+data.bonePaths[i]);
+                int index=Array.IndexOf(poseBones,bone);
+                if(index>=0){restPositions[index]=data.bonePositions[i];restRotations[index]=data.boneRotations[i];}
+            }
+            for(int i=0;i<poseBones.Length;i++){poseBones[i].localPosition=restPositions[i];poseBones[i].localRotation=restRotations[i];}
+            basePose=null;basisName=data.baseClip ?? "Загруженная поза";
+            shoulderPivot=data.shoulderPivot;drawAmount=data.drawAmount;sampleTime=data.sampleTime;
+            bodyAimWeight=data.bodyAimWeight;pitchLimit=data.pitchLimit;yawLimit=data.yawLimit;
+            if(data.controlPositions!=null && data.controlRotations!=null && data.controlPositions.Length==Controls.Length && data.controlRotations.Length==Controls.Length)
+                for(int i=0;i<Controls.Length;i++){Controls[i].localPosition=data.controlPositions[i];Controls[i].localRotation=data.controlRotations[i];}
+            else
+            {
+                aimFrame.SetPositionAndRotation(transform.TransformPoint(shoulderPivot),transform.rotation);
+                aimTarget.position=aimFrame.position+transform.forward*2.5f;
+                RebaseControls();CaptureDefaults();
+            }
+            previewEnabled=true;ApplyPose();RememberCurrentInput();
         }
 
         private void OnDrawGizmos()
