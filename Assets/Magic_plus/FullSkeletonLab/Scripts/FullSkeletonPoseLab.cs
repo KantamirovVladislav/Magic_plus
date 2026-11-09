@@ -12,6 +12,7 @@ namespace MagicPlus.FullSkeleton
         public bool showSkeleton = true;
         [SerializeField, HideInInspector] private PoseDocument _neutral;
         public const string Format = "magicplus.full-skeleton";
+        [NonSerialized] public bool previewActive;
         public Transform[] Bones => character ? character.GetComponentsInChildren<Transform>(true) : Array.Empty<Transform>();
 
         [Serializable]
@@ -57,6 +58,7 @@ namespace MagicPlus.FullSkeleton
             Validate(_neutral);
             return JsonUtility.ToJson(_neutral, true);
         }
+        public void ValidateJson(string json) { Validate(JsonUtility.FromJson<PoseDocument>(json)); }
         public void LoadJson(string json)
         {
             var pose = JsonUtility.FromJson<PoseDocument>(json);
