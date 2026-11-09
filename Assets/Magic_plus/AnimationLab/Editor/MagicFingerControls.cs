@@ -9,6 +9,7 @@ namespace MagicPlus.AnimationLab
         private static int _side, _finger=1, _joint;
         private static bool _open=true, _details;
         private static readonly string[] Names={"Большой","Указательный","Средний","Безымянный","Мизинец"};
+        public static void SelectRightHand() { _side=1; _finger=1; }
         public static void Draw(MagicPoseLab lab)
         {
             _open=EditorGUILayout.Foldout(_open,"Кисти и пальцы",true);
