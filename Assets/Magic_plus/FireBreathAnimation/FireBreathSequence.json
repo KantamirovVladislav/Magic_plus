@@ -1,0 +1,8 @@
+{
+  "version": 1,
+  "enterSeconds": 0.6,
+  "automaticHoldSeconds": 2.4,
+  "exitSeconds": 0.5,
+  "holdCycleSeconds": 2.2,
+  "breathPitchDegrees": 1.0
+}

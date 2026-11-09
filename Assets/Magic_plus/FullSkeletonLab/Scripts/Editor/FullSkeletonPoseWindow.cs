@@ -42,6 +42,11 @@ namespace MagicPlus.FullSkeleton
                     EditorSceneManager.OpenScene(ScenePath);
                 return;
             }
+            if (_lab.previewActive)
+            {
+                EditorGUILayout.HelpBox("Позой управляет предпросмотр анимации. Остановите его перед ручным редактированием.", MessageType.Info);
+                return;
+            }
             _scroll = EditorGUILayout.BeginScrollView(_scroll);
             GUILayout.Label("Полный скелет персонажа", EditorStyles.boldLabel);
             EditorGUILayout.HelpBox("Выберите кость. E — вращение, W — перемещение, Local — оси кости. Автоматическая анимация отключена. Ctrl+Z отменяет правки.", MessageType.Info);
